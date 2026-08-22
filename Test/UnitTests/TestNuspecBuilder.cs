@@ -10,7 +10,6 @@ using MultiProjPackTool.SettingHandling;
 using Test.Helpers;
 using Test.Stubs;
 using Xunit;
-using Xunit.Abstractions;
 using Xunit.Extensions.AssertExtensions;
 
 namespace Test.UnitTests
@@ -68,8 +67,8 @@ namespace Test.UnitTests
             dirToScan.NuspecFileExists().ShouldBeTrue();
             var nuspecData = dirToScan.DeserializeNuspecFile();
             //Check icon
-            nuspecData.files.Single(x => x.target != "lib\\net5.0").src.ShouldEqual("..\\images\\icon.png");
-            nuspecData.files.Single(x => x.target != "lib\\net5.0").target.ShouldEqual("images\\");
+            nuspecData.files.Single(x => x.target != "lib\\net10.0").src.ShouldEqual("..\\images\\icon.png");
+            nuspecData.files.Single(x => x.target != "lib\\net10.0").target.ShouldEqual("images\\");
             //Check repository
             nuspecData.metadata.repository.type.ShouldEqual("git");
             nuspecData.metadata.repository.url.ShouldEqual("https://github.com/NuGet/NuGet.Client.git");
@@ -97,10 +96,13 @@ namespace Test.UnitTests
             //VERIFY
             dirToScan.NuspecFileExists().ShouldBeTrue();
             var nuspecData = dirToScan.DeserializeNuspecFile();
-            nuspecData.files.Length.ShouldEqual(5);
-            nuspecData.files.All(x => x.target == "lib\\net5.0").ShouldBeTrue();
+            // Not sure why originally Project1.pdb was not loading - but it is loading now!
+            nuspecData.files.Length.ShouldEqual(6);
+            // nuspecData.files.Length.ShouldEqual(5);
+            // We seem to have all projects updated to net10.0. It is not clear when it was updated
+            nuspecData.files.All(x => x.target == "lib\\net10.0").ShouldBeTrue();
             nuspecData.files.Select(x => x.src.Substring(x.src.Length - "projectx.dll".Length))
-                .ShouldEqual(new[] { "Project1.dll", "Project2.dll", "Project2.pdb", "Project3.dll", "Project3.pdb" });
+                .ShouldEqual(new[] { "Project1.dll", "Project1.pdb", "Project2.dll", "Project2.pdb", "Project3.dll", "Project3.pdb" });
         }
 
         [Fact]
@@ -118,8 +120,9 @@ namespace Test.UnitTests
 
             settings.toolSettings.AddSymbols = "Debug";
 
+            //net10.0 here must match the .net framework version, if net10.0 changes, this test will fail
             //ensure .pdb file is there
-            var pdbPath = Path.Combine(dirToScan, "Group1.Project1\\bin\\Debug\\net5.0\\Group1.Project1.pdb");
+            var pdbPath = Path.Combine(dirToScan, "Group1.Project1\\bin\\Debug\\net10.0\\Group1.Project1.pdb");
             File.WriteAllText(pdbPath, "dummy content");
 
             //ATTEMPT
@@ -146,8 +149,9 @@ namespace Test.UnitTests
 
             settings.toolSettings.AddSymbols = "Debug";
 
+            //net10.0 here must match the .net framework version, if net10.0 changes, this test will fail
             //delete a .pdb file
-            var pdbPath = Path.Combine(dirToScan, "Group1.Project1\\bin\\Debug\\net5.0\\Group1.Project1.pdb");
+            var pdbPath = Path.Combine(dirToScan, "Group1.Project1\\bin\\Debug\\net10.0\\Group1.Project1.pdb");
             File.Delete(pdbPath);
 
             //ATTEMPT

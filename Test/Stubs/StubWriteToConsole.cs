@@ -4,7 +4,7 @@
 using System;
 using Microsoft.Extensions.Logging;
 using MultiProjPackTool.HelperExtensions;
-using Xunit.Abstractions;
+using Xunit;
 
 namespace Test.Stubs
 {

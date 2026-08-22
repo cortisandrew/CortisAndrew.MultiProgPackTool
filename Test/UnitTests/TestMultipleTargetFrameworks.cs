@@ -10,7 +10,6 @@ using Test.Helpers;
 using Test.Stubs;
 using TestSupport.Helpers;
 using Xunit;
-using Xunit.Abstractions;
 using Xunit.Extensions.AssertExtensions;
 
 namespace Test.UnitTests
@@ -72,9 +71,11 @@ namespace Test.UnitTests
                     }
                 }
             }
+            // should match projects being loaded
             appInfo.AllProjects.Select(x => x.ProjectName).ShouldEqual(
                 new[] { "MultiFrameworks.Project1", "MultiFrameworks.Project2", "MultiFrameworks.Project3" });
-            appInfo.NuGetInfosDistinctByFramework.Keys.ToArray().ShouldEqual(new[] { "net6.0", "net7.0", "netstandard2.1" });
+            // This should be updated to match the project's .net frameworks in the .proj file of each of the projects
+            appInfo.NuGetInfosDistinctByFramework.Keys.ToArray().ShouldEqual(new[] { "net9.0", "net10.0", "netstandard2.1" });
         }
     }
 }

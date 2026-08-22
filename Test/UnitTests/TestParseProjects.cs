@@ -8,7 +8,6 @@ using Test.Helpers;
 using Test.Stubs;
 using TestSupport.Helpers;
 using Xunit;
-using Xunit.Abstractions;
 using Xunit.Extensions.AssertExtensions;
 
 namespace Test.UnitTests
