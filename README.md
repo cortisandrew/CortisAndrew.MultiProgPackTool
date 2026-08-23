@@ -311,13 +311,14 @@ The exception identifies the package, project, target framework when available, 
 
 ## Multiple-version warnings
 
-After every project and framework has been parsed, the complete resolved reference set is grouped by package ID using case-insensitive comparison. If an ID has more than one distinct resolved version, a `Warning` is emitted with:
+After every project and framework has been parsed, the resolved reference set is partitioned by target framework and then grouped by package ID using case-insensitive comparison. A `Warning` is emitted only when one package ID has more than one distinct version inside the same target-framework dependency group. The warning contains:
 
 - the package ID;
 - every resolved version;
-- the project and target framework that selected each version.
+- the target framework being checked;
+- every project that selected each version.
 
-These warnings are informational/non-blocking, consistent with the tool's previous different-version diagnostic. They do not increment the blocking warning count. Within one target-framework nuspec dependency group, the first parsed occurrence of a duplicate package ID remains the emitted dependency; the warning makes any disagreement visible for review. Different target-framework groups retain their independently resolved versions.
+These warnings are informational/non-blocking and do not increment the blocking warning count. Within one target-framework nuspec dependency group, the first parsed occurrence of a duplicate package ID remains the emitted dependency; the warning makes any disagreement in that group visible for review. Different target frameworks are separate compilation/dependency groups and are never compared with each other, so net9.0 using one version and net10.0 using another does not warn.
 
 ## Group3 and MultiFrameworks.Project4 test topology
 
@@ -365,10 +366,13 @@ When hydrated in the isolated test workspace, this graph produces intentional mu
 14. empty and unresolved central versions;
 15. duplicate central declarations and last-applicable selection;
 16. no warning when all resolved versions agree;
-17. warnings across projects and across target frameworks;
-18. the full Group3 graph managed by `MultiFrameworks.Project4` and `Project5`;
-19. the checked-in fixture remains inert, while a temporary test copy contains a hydrated `Directory.Packages.props` and all five project files.
-20. every checked-in fixture `PackageReference` lacks ordinary `Version` metadata, while the two intended `VersionOverride` entries remain.
+17. a warning when projects resolve one package to multiple versions inside the same target framework;
+18. no warning when versions differ only between separate target frameworks;
+19. the full Group3 graph managed by `MultiFrameworks.Project4` and `Project5`;
+20. the checked-in fixture remains inert, while a temporary test copy contains a hydrated `Directory.Packages.props` and all five project files;
+21. every checked-in fixture `PackageReference` lacks ordinary `Version` metadata, while the two intended `VersionOverride` entries remain;
+22. fixture discovery works for both repository-root and arbitrarily nested template/project layouts;
+23. the legacy multi-framework parser and nuspec tests run Projects1-5 together with the three required Group3 projects under hydrated CPM.
 
 The console test stub now retains every warning message so tests assert diagnostic content, not only a warning count.
 
@@ -379,7 +383,7 @@ The console test stub now retains every warning message so tests assert diagnost
 - `PackageVersionResolutionException.cs`: explicit stop condition for unresolved package versions.
 - `ProjectXmlFormat.cs`: `VersionOverride` plus attribute/element version shapes.
 - `FilterNuGetsByCondition.cs` and `ProjectsParser.cs`: pass the central map and active target framework through parsing.
-- `AppStructureInfo.cs`: final all-project/all-framework multiple-version analysis and selected props path.
+- `AppStructureInfo.cs`: final per-target-framework multiple-version analysis and selected props path.
 - `TestDirectoryPackagesProps.cs` and `StubWriteToConsole.cs`: edge-case tests and warning capture.
 - `CentralPackageManagement/*` and `MultiProgPackTool.sln`: versionless Group3/Project4/Project5 integration topology, an inert props template hydrated only in temporary tests, and a scoped `Directory.Build.targets` fallback that keeps ordinary solution builds valid.
 

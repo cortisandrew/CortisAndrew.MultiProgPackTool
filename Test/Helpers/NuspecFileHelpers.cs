@@ -13,7 +13,9 @@ namespace Test.Helpers
 
         public static string PathToNuspecFile(this string dirToScan, bool debug = true)
         {
-            return dirToScan + (debug ? DebugNuspecFile : ReleaseNuspecFile);
+            return Path.Combine(
+               dirToScan,
+               debug ? DebugNuspecFile : ReleaseNuspecFile);
         }
 
         public static bool NuspecFileExists(this string dirToScan, bool debug = true)

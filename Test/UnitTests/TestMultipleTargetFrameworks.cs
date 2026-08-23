@@ -31,9 +31,12 @@ namespace Test.UnitTests
             //SETUP
             var stubWriter = new StubWriteToConsole(_output);
             var settings = SettingHelpers.GetMinimalSettings();
-            settings.toolSettings.NamespacePrefix = "MultiFrameworks";
-            var dirToScan = "MultiFrameworks".GetPathToTestProjectGroups();
-            dirToScan.EnsureNuspecFileDeleted();
+            // The hydrated graph includes legacy Projects1-3, CPM Projects4-5, and
+            // the Group3 projects referenced by Projects4-5.
+            settings.toolSettings.NamespacePrefix = string.Empty;
+            using var fixture = CentralPackageManagementFixture.Create(
+                includeLegacyMultiFrameworkProjects: true);
+            var dirToScan = fixture.RootPath;
 
             var appInfo = dirToScan.ScanForProjects(settings, stubWriter);
             var argsDecoded = new ArgsDecoded(new[] { "D" }, dirToScan, stubWriter);
@@ -52,10 +55,12 @@ namespace Test.UnitTests
             //SETUP
             var stubWriter = new StubWriteToConsole(_output);
             var settings = SettingHelpers.GetMinimalSettings();
-            settings.toolSettings.NamespacePrefix = "MultiFrameworks";
+            settings.toolSettings.NamespacePrefix = string.Empty;
+            using var fixture = CentralPackageManagementFixture.Create(
+                includeLegacyMultiFrameworkProjects: true);
 
             //ATTEMPT
-            var pathToProjects = Path.GetFullPath(Path.Combine(TestData.GetCallingAssemblyTopLevelDir() + "\\..\\"));
+            var pathToProjects = fixture.RootPath;
             var appInfo = pathToProjects.ScanForProjects(settings, stubWriter);
 
             //VERIFY
@@ -72,10 +77,24 @@ namespace Test.UnitTests
                 }
             }
             // should match projects being loaded
-            appInfo.AllProjects.Select(x => x.ProjectName).ShouldEqual(
-                new[] { "MultiFrameworks.Project1", "MultiFrameworks.Project2", "MultiFrameworks.Project3" });
+            appInfo.AllProjects
+                .Select(x => x.ProjectName)
+                .OrderBy(x => x)
+                .ToArray()
+                .ShouldEqual(new[]
+                {
+                    "Group3.Project1",
+                    "Group3.Project2",
+                    "Group3.Project3",
+                    "MultiFrameworks.Project1",
+                    "MultiFrameworks.Project2",
+                    "MultiFrameworks.Project3",
+                    "MultiFrameworks.Project4",
+                    "MultiFrameworks.Project5"
+                });
             // This should be updated to match the project's .net frameworks in the .proj file of each of the projects
-            appInfo.NuGetInfosDistinctByFramework.Keys.ToArray().ShouldEqual(new[] { "net9.0", "net10.0", "netstandard2.1" });
+            appInfo.NuGetInfosDistinctByFramework.Keys.OrderBy(x => x).ToArray()
+                .ShouldEqual(new[] { "net10.0", "net9.0", "netstandard2.1" });
         }
     }
 }

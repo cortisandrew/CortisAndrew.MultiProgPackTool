@@ -95,33 +95,40 @@ namespace MultiProjPackTool.ParseProjects
         private void WarnIfPackageReferencesHaveMultipleVersions(IWriteToConsole writeToConsoleOut)
         {
             var references = AllProjects
-                .SelectMany(project => project.NuGetPackagesByFramework.SelectMany(packagesByFramework =>
-                    packagesByFramework.Value.Select(package => new
-                    {
-                        Package = package,
-                        ProjectName = project.ProjectName,
-                        TargetFramework = packagesByFramework.Key
-                    })))
+                .SelectMany(project => project.NuGetPackagesByFramework.Values.SelectMany(packages =>
+                    packages.SelectMany(package =>
+                        package.ApplicableVersions.Select(version => new
+                        {
+                            PackageId = package.NuGetId,
+                            Version = version,
+                            package.ProjectName,
+                            package.TargetFramework
+                        }))))
                 .ToList();
 
-            foreach (var packageGroup in references
-                         .GroupBy(x => x.Package.NuGetId, System.StringComparer.OrdinalIgnoreCase))
+            foreach (var frameworkGroup in references
+                         .GroupBy(x => x.TargetFramework, System.StringComparer.OrdinalIgnoreCase))
             {
-                var versions = packageGroup
-                    .GroupBy(x => x.Package.Version, System.StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-                if (versions.Count <= 1)
-                    continue;
+                foreach (var packageGroup in frameworkGroup
+                             .GroupBy(x => x.PackageId, System.StringComparer.OrdinalIgnoreCase))
+                {
+                    var versions = packageGroup
+                        .GroupBy(x => x.Version, System.StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                    if (versions.Count <= 1)
+                        continue;
 
-                var versionDetails = versions.Select(versionGroup =>
-                    $"{versionGroup.Key} ({string.Join(", ", versionGroup
-                        .Select(x => $"{x.ProjectName}/{x.TargetFramework}")
-                        .Distinct())})");
-                writeToConsoleOut.LogMessage(
-                    $"Package reference/dependency '{packageGroup.First().Package.NuGetId}' resolves to multiple " +
-                    $"versions after parsing: {string.Join("; ", versionDetails)}.",
-                    LogLevel.Warning,
-                    true);
+                    var versionDetails = versions.Select(versionGroup =>
+                        $"{versionGroup.Key} ({string.Join(", ", versionGroup
+                            .Select(x => x.ProjectName)
+                            .Distinct())})");
+                    writeToConsoleOut.LogMessage(
+                        $"Package reference/dependency '{packageGroup.First().PackageId}' resolves to " +
+                        $"multiple versions within target framework '{frameworkGroup.Key}': " +
+                        $"{string.Join("; ", versionDetails)}.",
+                        LogLevel.Warning,
+                        true);
+                }
             }
         }
 

@@ -2,6 +2,7 @@
 // Licensed under MIT license. See License.txt in the project root for license information.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace MultiProjPackTool.ParseProjects
@@ -15,6 +16,18 @@ namespace MultiProjPackTool.ParseProjects
         /// <summary>Gets the source selected by the package version precedence rules.</summary>
         public PackageVersionSource VersionSource { get; }
 
+        /// <summary>Gets the project that declared this package reference.</summary>
+        public string ProjectName { get; }
+
+        /// <summary>Gets the target framework for which this package reference was evaluated.</summary>
+        public string TargetFramework { get; }
+
+        /// <summary>
+        /// Gets every usable version applicable to this reference before precedence selects <see cref="Version"/>.
+        /// </summary>
+        public IReadOnlyList<string> ApplicableVersions { get; }
+
+
         public NuGetInfo(
             ProjectItemGroupPackageReference xml,
             CentralPackageVersions centralPackageVersions,
@@ -27,6 +40,9 @@ namespace MultiProjPackTool.ParseProjects
             if (centralPackageVersions == null)
                 throw new ArgumentNullException(nameof(centralPackageVersions));
 
+            ProjectName = projectName;
+            TargetFramework = targetFramework;
+
             NuGetId = xml.Include?.Trim();
             if (string.IsNullOrWhiteSpace(NuGetId))
                 throw new PackageVersionResolutionException(
@@ -37,6 +53,16 @@ namespace MultiProjPackTool.ParseProjects
                 : $" for target framework '{targetFramework}'";
 
             var versionOverride = FirstPopulated(xml.VersionOverride, xml.VersionOverrideElement);
+            var hasCentralVersion = centralPackageVersions.TryGetVersion(
+                NuGetId,
+                targetFramework,
+                out var centralVersion);
+            var projectVersion = FirstPopulated(xml.Version, xml.VersionElement);
+            ApplicableVersions = new[] { versionOverride, centralVersion, projectVersion }
+                .Where(IsUsableVersion)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            
             if (versionOverride != null)
             {
                 Version = versionOverride;
@@ -44,7 +70,7 @@ namespace MultiProjPackTool.ParseProjects
                 return;
             }
 
-            if (centralPackageVersions.TryGetVersion(NuGetId, targetFramework, out var centralVersion))
+            if (hasCentralVersion)
             {
                 if (!IsUsableVersion(centralVersion))
                 {
@@ -59,7 +85,6 @@ namespace MultiProjPackTool.ParseProjects
                 return;
             }
 
-            var projectVersion = FirstPopulated(xml.Version, xml.VersionElement);
             if (projectVersion != null)
             {
                 Version = projectVersion;

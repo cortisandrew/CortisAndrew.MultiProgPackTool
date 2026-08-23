@@ -21,7 +21,8 @@ public sealed class TestDirectoryPackagesProps : IDisposable
     public void Group3_UsesCentralAndOverrideVersions_AndWarnsAboutTheConflict()
     {
         var stubWriter = new StubWriteToConsole();
-        var solutionRoot = HydrateCentralPackageManagementFixture();
+        using var fixture = CentralPackageManagementFixture.Create();
+        var solutionRoot = fixture.RootPath;
 
         var appInfo = Scan(solutionRoot, "Group3", stubWriter);
 
@@ -29,17 +30,19 @@ public sealed class TestDirectoryPackagesProps : IDisposable
             Path.Combine(solutionRoot, "Directory.Packages.props"),
             appInfo.DirectoryPackagesPropsPath);
 
-        var project1Package = SinglePackage(appInfo, "Group3.Project1", "net10.0");
+        // Nuget from Directory.Packages.props
+        var project1Package = SinglePackageOrDefault(appInfo, "Group3.Project1", "net10.0", "Newtonsoft.Json");
         Assert.Equal("13.0.3", project1Package.Version);
         Assert.Equal(PackageVersionSource.DirectoryPackagesProps, project1Package.VersionSource);
 
-        var project2Package = SinglePackage(appInfo, "Group3.Project2", "net10.0");
+        // Nuget from Override
+        var project2Package = SinglePackageOrDefault(appInfo, "Group3.Project2", "net10.0", "Newtonsoft.Json");
         Assert.Equal("13.0.4", project2Package.Version);
         Assert.Equal(PackageVersionSource.VersionOverride, project2Package.VersionSource);
 
-        var project3Package = SinglePackage(appInfo, "Group3.Project3", "net10.0");
-        Assert.Equal("10.0.0", project3Package.Version);
-        Assert.Equal(PackageVersionSource.DirectoryPackagesProps, project3Package.VersionSource);
+        // Package not loaded for Group3.Project3
+        var project3Package = SinglePackageOrDefault(appInfo, "Group3.Project3", "net10.0", "Newtonsoft.Json");
+        Assert.Null(project3Package);
 
         Assert.Contains(stubWriter.WarningMessages, message =>
             message.Contains("Newtonsoft.Json")
@@ -52,7 +55,8 @@ public sealed class TestDirectoryPackagesProps : IDisposable
     public void MultiFrameworksProject4And5_ManageGroup3AcrossBothFrameworks()
     {
         var stubWriter = new StubWriteToConsole();
-        var solutionRoot = HydrateCentralPackageManagementFixture();
+        using var fixture = CentralPackageManagementFixture.Create();
+        var solutionRoot = fixture.RootPath;
 
         // An empty prefix deliberately scans the complete fixture graph so the manager-to-Group3 links are retained.
         var appInfo = Scan(solutionRoot, string.Empty, stubWriter);
@@ -64,23 +68,23 @@ public sealed class TestDirectoryPackagesProps : IDisposable
         Assert.Equal("Group3.Project3", project4.ChildProjects.Single().ProjectName);
         Assert.Equal(
             PackageVersionSource.DirectoryPackagesProps,
-            SinglePackage(appInfo, "MultiFrameworks.Project4", "net9.0").VersionSource);
+            SinglePackageOrDefault(appInfo, "MultiFrameworks.Project4", "net9.0", "Microsoft.Extensions.Logging.Abstractions").VersionSource);
         Assert.Equal(
             "9.0.0",
-            SinglePackage(appInfo, "MultiFrameworks.Project4", "net9.0").Version);
+            SinglePackageOrDefault(appInfo, "MultiFrameworks.Project4", "net9.0", "Microsoft.Extensions.Logging.Abstractions").Version);
         Assert.Equal(
             "10.0.0",
-            SinglePackage(appInfo, "MultiFrameworks.Project4", "net10.0").Version);
+            SinglePackageOrDefault(appInfo, "MultiFrameworks.Project4", "net10.0", "Microsoft.Extensions.Logging.Abstractions").Version);
 
         var project5 = appInfo.AllProjects.Single(x => x.ProjectName == "MultiFrameworks.Project5");
         Assert.Equal(new[] { "net9.0", "net10.0" }, project5.TargetFrameworks);
         Assert.Equal("Group3.Project2", project5.ChildProjects.Single().ProjectName);
         Assert.Equal(
             PackageVersionSource.VersionOverride,
-            SinglePackage(appInfo, "MultiFrameworks.Project5", "net9.0").VersionSource);
+            SinglePackageOrDefault(appInfo, "MultiFrameworks.Project5", "net9.0", "Newtonsoft.Json").VersionSource);
         Assert.Equal(
             "13.0.4",
-            SinglePackage(appInfo, "MultiFrameworks.Project5", "net10.0").Version);
+            SinglePackageOrDefault(appInfo, "MultiFrameworks.Project5", "net10.0", "Newtonsoft.Json").Version);
 
         Assert.Equal(
             new[] { "MultiFrameworks.Project4", "MultiFrameworks.Project5" },
@@ -89,23 +93,24 @@ public sealed class TestDirectoryPackagesProps : IDisposable
             message.Contains("Newtonsoft.Json")
             && message.Contains("13.0.3")
             && message.Contains("13.0.4"));
-        Assert.Contains(stubWriter.WarningMessages, message =>
-            message.Contains("Microsoft.Extensions.Logging.Abstractions")
-            && message.Contains("9.0.0")
-            && message.Contains("10.0.0")
-            && message.Contains("net9.0")
-            && message.Contains("net10.0"));
+        Assert.DoesNotContain(stubWriter.WarningMessages, message =>
+             message.Contains(PackageId)
+             && message.Contains("resolves to multiple versions"));
     }
 
+    /// <summary>
+    /// We only want the Directory.Packages.props to be created for the tests and it should not cause issues with the solution for MultiProgPackTool
+    /// </summary>
     [Fact]
     public void CentralPackageManagementFixtureIsInertUntilHydratedForATest()
     {
-        var sourceRoot = GetCentralPackageManagementFixtureRoot();
+        var sourceRoot = CentralPackageManagementFixture.FindSourceRoot();
 
         Assert.False(File.Exists(Path.Combine(sourceRoot, "Directory.Packages.props")));
         Assert.True(File.Exists(Path.Combine(sourceRoot, "Directory.Packages.props.template")));
 
-        var hydratedRoot = HydrateCentralPackageManagementFixture();
+        using var fixture = CentralPackageManagementFixture.Create();
+        var hydratedRoot = fixture.RootPath;
 
         var hydratedPropsPath = Path.Combine(hydratedRoot, "Directory.Packages.props");
         Assert.True(File.Exists(hydratedPropsPath));
@@ -121,10 +126,31 @@ public sealed class TestDirectoryPackagesProps : IDisposable
     }
 
     [Fact]
+    public void FixtureDiscoverySupportsFlatAndNestedLayouts()
+    {
+        var flatLayout = CreateFixtureDiscoveryLayout(nested: false);
+        var flatSearchStart = Path.Combine(flatLayout.SolutionRoot, "Test", "bin");
+        Directory.CreateDirectory(flatSearchStart);
+
+        var nestedLayout = CreateFixtureDiscoveryLayout(nested: true);
+        var nestedSearchStart = Path.Combine(nestedLayout.SolutionRoot, "Test", "bin");
+        Directory.CreateDirectory(nestedSearchStart);
+
+        Assert.Equal(
+            Path.GetFullPath(flatLayout.FixtureRoot),
+            CentralPackageManagementFixture.FindSourceRoot(new[] { flatSearchStart }));
+        Assert.Equal(
+            Path.GetFullPath(nestedLayout.FixtureRoot),
+            CentralPackageManagementFixture.FindSourceRoot(new[] { nestedSearchStart }));
+    }
+
+
+    [Fact]
     public void CheckedInCentralPackageManagementProjectsHaveNoNormalPackageVersions()
     {
-        var sourceRoot = GetCentralPackageManagementFixtureRoot();
-        var packageReferences = Directory.GetFiles(sourceRoot, "*.csproj", SearchOption.AllDirectories)
+        var sourceRoot = CentralPackageManagementFixture.FindSourceRoot();
+        var packageReferences = CentralPackageManagementFixture
+            .GetRequiredProjectFiles(sourceRoot)
             .SelectMany(projectPath => XDocument.Load(projectPath).Descendants()
                 .Where(element => element.Name.LocalName == "PackageReference"))
             .ToList();
@@ -141,18 +167,33 @@ public sealed class TestDirectoryPackagesProps : IDisposable
             .Any(attribute => attribute.Name.LocalName == "VersionOverride")));
     }
 
+    /// <summary>
+    /// Central version should win over project version
+    /// </summary>
     [Fact]
     public void CentralVersionWinsOverProjectVersion_AndPackageIdsAreCaseInsensitive()
     {
+        var stubWriter = new StubWriteToConsole();
+
         var root = CreateSolutionRoot(Props(
             "<PackageVersion Include=\"centraltest.package\" Version=\"2.0.0\" />"));
         AddProject(root, Project(
             "<PackageReference Include=\"CentralTest.Package\" Version=\"1.0.0\" />"));
 
-        var package = SinglePackage(Scan(root));
+        var appStructureInfo = Scan(root, consoleOut: stubWriter);
+        var package = SinglePackageOrDefault(
+            appStructureInfo,
+            appStructureInfo.RootProjects[0].ProjectName,
+            "net10.0",
+            "centraltest.package");
 
         Assert.Equal("2.0.0", package.Version);
         Assert.Equal(PackageVersionSource.DirectoryPackagesProps, package.VersionSource);
+        Assert.Contains(stubWriter.WarningMessages, message =>
+           message.Contains("centraltest.package", StringComparison.OrdinalIgnoreCase)
+           && message.Contains("2.0.0")
+           && message.Contains("1.0.0")
+           && message.Contains("resolves to multiple versions"));
     }
 
     [Fact]
@@ -163,10 +204,24 @@ public sealed class TestDirectoryPackagesProps : IDisposable
         AddProject(root, Project(
             "<PackageReference Include=\"CentralTest.Package\" VersionOverride=\"3.0.0\" />"));
 
-        var package = SinglePackage(Scan(root));
+        var appStructureInfo = Scan(root);
+        var package = SinglePackageOrDefault(
+            appStructureInfo, 
+            appStructureInfo.RootProjects[0].ProjectName, 
+            "net10.0",
+            "CentralTest.Package");
 
         Assert.Equal("3.0.0", package.Version);
         Assert.Equal(PackageVersionSource.VersionOverride, package.VersionSource);
+
+        package = SinglePackageOrDefault(
+            appStructureInfo,
+            appStructureInfo.RootProjects[0].ProjectName,
+            "net10.0",
+            "Different.Package");
+
+        // Assert that we do not load packages we do not need from central repository
+        Assert.Null(package);
     }
 
     [Fact]
@@ -206,8 +261,17 @@ public sealed class TestDirectoryPackagesProps : IDisposable
             PackageVersionSource.DirectoryPackagesProps,
             appInfo.NuGetInfosDistinctByFramework["net10.0"].Single().VersionSource);
         Assert.Equal("10.0.0", appInfo.NuGetInfosDistinctByFramework["net10.0"].Single().Version);
-        Assert.Contains(stubWriter.WarningMessages,
-            message => message.Contains("resolves to multiple versions"));
+        var warning = Assert.Single(stubWriter.WarningMessages, message =>
+            message.Contains(PackageId)
+            && message.Contains("resolves to multiple versions"));
+        Assert.Contains("target framework 'net10.0'", warning);
+        Assert.Contains("9.0.0", warning);
+        Assert.Contains("10.0.0", warning);
+        Assert.Contains("CentralTest.Project", warning);
+        Assert.DoesNotContain(stubWriter.WarningMessages, message =>
+            message.Contains(PackageId)
+            && message.Contains("target framework 'net9.0'")
+            && message.Contains("resolves to multiple versions"));
     }
 
     [Fact]
@@ -436,7 +500,7 @@ public sealed class TestDirectoryPackagesProps : IDisposable
     }
 
     [Fact]
-    public void MultipleVersionsAcrossTargetFrameworkDependenciesWarnAtEndOfParsing()
+    public void DifferentVersionsInDifferentTargetFrameworksDoNotWarn()
     {
         var stubWriter = new StubWriteToConsole();
         var root = CreateSolutionRoot();
@@ -460,10 +524,36 @@ public sealed class TestDirectoryPackagesProps : IDisposable
 
         Assert.Equal("9.0.0", appInfo.NuGetInfosDistinctByFramework["net9.0"].Single().Version);
         Assert.Equal("10.0.0", appInfo.NuGetInfosDistinctByFramework["net10.0"].Single().Version);
-        Assert.Contains(stubWriter.WarningMessages, message =>
-            message.Contains("resolves to multiple versions")
-            && message.Contains("net9.0")
-            && message.Contains("net10.0"));
+        Assert.DoesNotContain(stubWriter.WarningMessages, message =>
+            message.Contains(PackageId)
+            && message.Contains("resolves to multiple versions"));
+        Assert.Equal(0, stubWriter.NumWarnings);
+    }
+
+    [Fact]
+    public void MultipleVersionsWithinSameTargetFrameworkWarnAtEndOfParsing()
+    {
+        var stubWriter = new StubWriteToConsole();
+        var root = CreateSolutionRoot();
+        AddProject(
+            root,
+            Project("<PackageReference Include=\"CentralTest.Package\" VersionOverride=\"9.0.0\" />"),
+            "CentralTest.Project1");
+        AddProject(
+            root,
+            Project("<PackageReference Include=\"CentralTest.Package\" VersionOverride=\"10.0.0\" />"),
+            "CentralTest.Project2");
+
+        Scan(root, consoleOut: stubWriter);
+
+        var warning = Assert.Single(stubWriter.WarningMessages, message =>
+            message.Contains(PackageId)
+            && message.Contains("resolves to multiple versions"));
+        Assert.Contains("target framework 'net10.0'", warning);
+        Assert.Contains("9.0.0", warning);
+        Assert.Contains("CentralTest.Project1", warning);
+        Assert.Contains("10.0.0", warning);
+        Assert.Contains("CentralTest.Project2", warning);
         Assert.Equal(0, stubWriter.NumWarnings);
     }
 
@@ -505,64 +595,21 @@ public sealed class TestDirectoryPackagesProps : IDisposable
         return root;
     }
 
-    private string HydrateCentralPackageManagementFixture()
+    private (string SolutionRoot, string FixtureRoot) CreateFixtureDiscoveryLayout(bool nested)
     {
-        var sourceRoot = GetCentralPackageManagementFixtureRoot();
-        var templatePath = Path.Combine(sourceRoot, "Directory.Packages.props.template");
-        if (!File.Exists(templatePath))
-            throw new FileNotFoundException(
-                $"Cannot hydrate the central-package fixture because its template was not found at '{templatePath}'.",
-                templatePath);
+        var solutionRoot = CreateSolutionRoot();
+        var fixtureRoot = nested
+            ? Path.Combine(solutionRoot, "Arbitrary", "CentralFixtures")
+            : solutionRoot;
+        Directory.CreateDirectory(fixtureRoot);
+        File.WriteAllText(
+            Path.Combine(fixtureRoot, "Directory.Packages.props.template"),
+            Props("<PackageVersion Include=\"CentralTest.Package\" Version=\"1.0.0\" />"));
 
-        var sourceProjectFiles = Directory.GetFiles(sourceRoot, "*.csproj", SearchOption.AllDirectories);
-        if (sourceProjectFiles.Length != 5)
-            throw new InvalidOperationException(
-                $"Expected five central-package fixture projects below '{sourceRoot}', but found " +
-                $"{sourceProjectFiles.Length}.");
+        foreach (var projectName in CentralPackageManagementFixture.RequiredProjectNames)
+            AddProject(fixtureRoot, Project(string.Empty), projectName);
 
-        var hydratedRoot = CreateSolutionRoot();
-        var hydratedPropsPath = Path.Combine(hydratedRoot, "Directory.Packages.props");
-        File.Copy(templatePath, hydratedPropsPath);
-        if (!File.Exists(hydratedPropsPath))
-            throw new IOException(
-                $"Directory.Packages.props was not created at the hydrated test root '{hydratedRoot}'.");
-
-        // Do not copy Directory.Build.targets: parser integration tests must resolve from CPM/override only.
-        foreach (var sourceProjectFile in sourceProjectFiles)
-        {
-            var relativePath = Path.GetRelativePath(sourceRoot, sourceProjectFile);
-            var destination = Path.Combine(hydratedRoot, relativePath);
-            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-            File.Copy(sourceProjectFile, destination);
-        }
-
-        return hydratedRoot;
-    }
-
-    private static string GetCentralPackageManagementFixtureRoot()
-    {
-        var searchRoots = new[] { AppContext.BaseDirectory, Directory.GetCurrentDirectory() }
-            .Select(Path.GetFullPath)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        foreach (var searchRoot in searchRoots)
-        {
-            var currentDirectory = new DirectoryInfo(searchRoot);
-            while (currentDirectory != null)
-            {
-                var fixtureRoot = Path.Combine(currentDirectory.FullName, "CentralPackageManagement");
-                var templatePath = Path.Combine(fixtureRoot, "Directory.Packages.props.template");
-                if (File.Exists(templatePath))
-                    return Path.GetFullPath(fixtureRoot);
-
-                currentDirectory = currentDirectory.Parent;
-            }
-        }
-
-        throw new DirectoryNotFoundException(
-            "Could not locate CentralPackageManagement/Directory.Packages.props.template. " +
-            $"Searched upward from: {string.Join("; ", searchRoots)}.");
+        return (solutionRoot, fixtureRoot);
     }
 
     private static void AddProject(
@@ -602,6 +649,17 @@ public sealed class TestDirectoryPackagesProps : IDisposable
         return appInfo.AllProjects.Single(x => x.ProjectName == projectName)
             .NuGetPackagesByFramework[targetFramework]
             .Single();
+    }
+
+    private static NuGetInfo SinglePackageOrDefault(
+        AppStructureInfo appInfo,
+        string projectName,
+        string targetFramework,
+        string packageNugetId)
+    {
+        return appInfo.AllProjects.Single(x => x.ProjectName == projectName)
+            .NuGetPackagesByFramework[targetFramework]
+            .SingleOrDefault(p => String.Equals(p.NuGetId, packageNugetId, StringComparison.OrdinalIgnoreCase));
     }
 
     private static string Props(string packageVersions)

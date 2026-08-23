@@ -58,7 +58,7 @@ public class FilterNuGetsByCondition
             if (IncludeThisItemGroupWithConditions(itemGroup, targetFramework))
                 result.AddRange(itemGroup.PackageReference.Select(x => CreateNuGetInfo(x, targetFramework)));
         }
-        result.AddRange(IncludeTheseNuGetsNoConditions());
+        result.AddRange(IncludeTheseNuGetsNoConditions(targetFramework));
         return result;
     }
 
