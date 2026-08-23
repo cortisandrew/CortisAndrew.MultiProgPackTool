@@ -14,21 +14,36 @@ public class FilterNuGetsByCondition
     private readonly ProjectItemGroup[] _itemsWithReferences;
     private readonly string _projectFilename;
     private readonly IWriteToConsole _consoleOut;
+    private readonly CentralPackageVersions _centralPackageVersions;
 
-    public FilterNuGetsByCondition(Project projectDecoded, string projectFilename, IWriteToConsole consoleOut)
+
+    public FilterNuGetsByCondition(
+        Project projectDecoded, 
+        string projectFilename, 
+        IWriteToConsole consoleOut, 
+        CentralPackageVersions centralPackageVersions)
     {
         _itemsWithReferences = projectDecoded.ItemGroup
-            ?.Where(x => x?.PackageReference?.Any() == true).ToArray() ?? new ProjectItemGroup[]{};
+            ?.Where(x => x?.PackageReference?.Any() == true).ToArray() ?? new ProjectItemGroup[] { };
         _projectFilename = projectFilename;
         _consoleOut = consoleOut;
+        _centralPackageVersions = centralPackageVersions;
     }
 
-    public List<NuGetInfo> IncludeTheseNuGetsNoConditions()
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <returns></returns>
+    /// <remarks>
+    /// Since we are now using Directory.Packages.props,
+    /// we may have multiple conditions from this file, and therefor, the targetFramework becomes useful 
+    /// </remarks>
+    public List<NuGetInfo> IncludeTheseNuGetsNoConditions(string targetFramework = null)
     {
         var result = new List<NuGetInfo>();
         foreach (var itemGroup in _itemsWithReferences.Where(x => x.Condition == null))
         {
-            result.AddRange(itemGroup.PackageReference.Select(x => new NuGetInfo(x)));
+            result.AddRange(itemGroup.PackageReference.Select(x => CreateNuGetInfo(x, targetFramework)));
         }
         return result;
     }
@@ -41,10 +56,21 @@ public class FilterNuGetsByCondition
         foreach (var itemGroup in _itemsWithReferences.Where(x => x.Condition != null))
         {
             if (IncludeThisItemGroupWithConditions(itemGroup, targetFramework))
-                result.AddRange(itemGroup.PackageReference.Select(x => new NuGetInfo(x)));
+                result.AddRange(itemGroup.PackageReference.Select(x => CreateNuGetInfo(x, targetFramework)));
         }
         result.AddRange(IncludeTheseNuGetsNoConditions());
         return result;
+    }
+
+    private NuGetInfo CreateNuGetInfo(
+        ProjectItemGroupPackageReference packageReference,
+        string targetFramework)
+    {
+        return new NuGetInfo(
+            packageReference,
+            _centralPackageVersions,
+            _projectFilename,
+            targetFramework);
     }
 
     //I couldn't find the definitive format of the .csproj condition, but see

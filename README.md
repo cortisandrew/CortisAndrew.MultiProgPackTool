@@ -208,6 +208,193 @@ The `-t:` command allows you to override any tools setting in the `<toolSettings
 
 `-t:ExcludeProjects=Test,AnotherProject`
 
+
+# Central package management with Directory.Packages.props
+
+The project parser supports NuGet Central Package Management (CPM). This section is the detailed implementation and review guide for that update.
+
+## What changed
+
+When `MultiProjPack` scans the solution directory for projects, it now also looks for `Directory.Packages.props`. Every parsed `PackageReference` is assigned a concrete version before the generated nuspec dependency groups are built. The selected version and its source are retained in `NuGetInfo` as `Version` and `VersionSource`.
+
+This behavior is backward compatible for solutions that do not use central package management: a project-local `Version` continues to be used.
+
+## Directory.Packages.props discovery
+
+Discovery starts in the directory passed to `ScanForProjects` (the solution/project-group scan directory) and walks upward one directory at a time. The first `Directory.Packages.props` found is used, matching the nearest-file convention used by .NET central package management.
+
+- A file in the scan directory takes precedence over a file in its parent.
+- Parent directories continue to be searched until the filesystem root.
+- Only the nearest file is parsed automatically. Parent files can still be incorporated by an explicit MSBuild import, but this parser does not execute imports.
+- The selected absolute path is exposed as `AppStructureInfo.DirectoryPackagesPropsPath`.
+- If no file is found, `DirectoryPackagesPropsPath` is `null` and normal project-local version handling continues.
+
+## Package version precedence
+
+Versions are resolved independently for every package reference and active target framework, in this order:
+
+| Priority | Source | Behavior |
+| --- | --- | --- |
+| 1 | `PackageReference VersionOverride` | Always wins when it contains a non-empty value, whether or not the package also exists in `Directory.Packages.props`. |
+| 2 | Matching `PackageVersion` in `Directory.Packages.props` | Wins over a normal project `Version`. Package IDs are matched case-insensitively. A target-framework condition must apply to the active framework. |
+| 3 | `PackageReference Version` | Used when no applicable central entry exists. This also preserves behavior when no central file exists. |
+| 4 | No version source | Throws `PackageVersionResolutionException` and stops parsing before nuspec creation or packing can continue. |
+
+For example:
+
+```xml
+<!-- Directory.Packages.props -->
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <JsonVersion>13.0.3</JsonVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Include="Newtonsoft.Json" Version="$(JsonVersion)" />
+  </ItemGroup>
+</Project>
+```
+
+```xml
+<!-- Uses 13.0.3 from Directory.Packages.props -->
+<PackageReference Include="Newtonsoft.Json" />
+
+<!-- Uses 13.0.4 because VersionOverride has highest priority -->
+<PackageReference Include="Newtonsoft.Json" VersionOverride="13.0.4" />
+
+<!-- Uses 1.2.3 only when No.Central.Entry has no applicable PackageVersion -->
+<PackageReference Include="No.Central.Entry" Version="1.2.3" />
+```
+
+## Supported XML forms
+
+The parser handles the following forms:
+
+- `PackageVersion Include="Id" Version="1.2.3"`.
+- `PackageVersion Update="Id" Version="1.2.3"`.
+- A child `<Version>1.2.3</Version>` element instead of a `Version` attribute.
+- Simple `$(PropertyName)` references and chained property references declared in `PropertyGroup` elements in the same file.
+- `PackageReference Version` as either an attribute or child element.
+- `PackageReference VersionOverride` as either an attribute or child element.
+- Package IDs with different casing in the project and central file.
+- Target-framework equality conditions on either the parent `ItemGroup` or `PackageVersion` itself. Multiple equality clauses joined with `or` are treated as alternatives.
+
+Central declarations are retained in file order and the last applicable declaration wins, mirroring MSBuild item evaluation order. Repeating the same package and condition with different versions produces a non-blocking warning explaining that the last declaration was selected.
+
+This is an XML parser, not a complete MSBuild evaluation engine. It intentionally does not evaluate arbitrary MSBuild functions, imports, `and` expressions involving unrelated properties, or conditional property assignment. An unresolved version property is treated as unusable and produces a resolution exception rather than writing an invalid version into the nuspec.
+
+## Multi-target framework behavior
+
+The active target framework is passed into central version resolution. This allows one package to use different centrally managed versions for different targets:
+
+```xml
+<ItemGroup Condition=" '$(TargetFramework)' == 'net9.0'">
+  <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+</ItemGroup>
+<ItemGroup Condition=" '$(TargetFramework)' == 'net10.0'">
+  <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+</ItemGroup>
+```
+
+An unconditional project package reference resolves to `9.0.0` while parsing `net9.0` and `10.0.0` while parsing `net10.0`. If a central declaration does not apply to the active framework, the normal project `Version` fallback is considered.
+
+## Missing or unusable versions
+
+`PackageVersionResolutionException` is thrown in each of these cases:
+
+- no `VersionOverride`, no applicable central `PackageVersion`, and no project `Version`;
+- a matching central entry exists but has an empty version;
+- a matching central entry contains a property reference that cannot be resolved from the same props file;
+- a parsed `PackageReference` does not contain an `Include` package ID.
+
+The exception identifies the package, project, target framework when available, selected `Directory.Packages.props` path or search directory, and why no usable version could be selected. This exception stops processing before generated dependency metadata or compilation/packing can proceed.
+
+## Multiple-version warnings
+
+After every project and framework has been parsed, the complete resolved reference set is grouped by package ID using case-insensitive comparison. If an ID has more than one distinct resolved version, a `Warning` is emitted with:
+
+- the package ID;
+- every resolved version;
+- the project and target framework that selected each version.
+
+These warnings are informational/non-blocking, consistent with the tool's previous different-version diagnostic. They do not increment the blocking warning count. Within one target-framework nuspec dependency group, the first parsed occurrence of a duplicate package ID remains the emitted dependency; the warning makes any disagreement visible for review. Different target-framework groups retain their independently resolved versions.
+
+## Group3 and MultiFrameworks.Project4 test topology
+
+The solution contains a buildable `Central Package Management Group`. Its central configuration is checked in as the inert `CentralPackageManagement/Directory.Packages.props.template`, so normal restore/build operations do not activate CPM for the repository. Each integration test creates a unique temporary directory, copies the five fixture project files into it, and copies the template there as the real `Directory.Packages.props` before invoking the parser. Test disposal removes that hydrated workspace.
+
+```text
+MultiFrameworks.Project4 (net9.0; net10.0)
+??? Group3.Project3 (net9.0; net10.0)
+    ??? Group3.Project2 (net9.0; net10.0)
+        ??? Group3.Project1 (net9.0; net10.0)
+
+MultiFrameworks.Project5 (net9.0; net10.0)
+??? Group3.Project2
+```
+
+The projects intentionally cover these real solution behaviors:
+
+| Project | Central-package behavior |
+| --- | --- |
+| `Group3.Project1` | Uses central `Newtonsoft.Json 13.0.3` through a property reference. |
+| `Group3.Project2` | Overrides that package with `VersionOverride="13.0.4"`. |
+| `Group3.Project3` | Uses target-specific central Logging Abstractions versions. |
+| `MultiFrameworks.Project4` | Manages/references the complete Group3 chain through Project3 and consumes target-specific central versions. |
+| `MultiFrameworks.Project5` | Manages/references Group3 through Project2 and exercises the override path independently. |
+
+When hydrated in the isolated test workspace, this graph produces intentional multi-version diagnostics for both an override conflict and a target-framework-specific dependency. Every checked-in fixture `PackageReference` deliberately omits normal `Version` metadata; only the two intentional `VersionOverride` values remain. `CentralPackageManagement/Directory.Build.targets` supplies scoped fallback versions during ordinary solution restore/build, but only when no active `Directory.Packages.props` exists beside it. The parser tests copy only the versionless project files and hydrate the central template, so their resolved versions can come only from `Directory.Packages.props` or `VersionOverride`.
+
+## Test coverage added
+
+`TestDirectoryPackagesProps` covers:
+
+1. central version selection and `VersionSource` tracking;
+2. central precedence over a project `Version`;
+3. case-insensitive package IDs;
+4. `VersionOverride` precedence with and without a central entry;
+5. attribute and child-element forms of `Version` and `VersionOverride`;
+6. project `Version` fallback with a non-matching or absent central file;
+7. discovery in the scan directory and a parent directory;
+8. nearest-file precedence;
+9. `PackageVersion Include` and `Update`;
+10. central version child elements and chained properties;
+11. target conditions on `ItemGroup` and `PackageVersion`;
+12. target-specific fallback to a project version;
+13. missing versions with and without a central file;
+14. empty and unresolved central versions;
+15. duplicate central declarations and last-applicable selection;
+16. no warning when all resolved versions agree;
+17. warnings across projects and across target frameworks;
+18. the full Group3 graph managed by `MultiFrameworks.Project4` and `Project5`;
+19. the checked-in fixture remains inert, while a temporary test copy contains a hydrated `Directory.Packages.props` and all five project files.
+20. every checked-in fixture `PackageReference` lacks ordinary `Version` metadata, while the two intended `VersionOverride` entries remain.
+
+The console test stub now retains every warning message so tests assert diagnostic content, not only a warning count.
+
+## Files changed by this feature
+
+- `CentralPackageVersions.cs`: nearest-file discovery, XML parsing, property expansion, conditional central entry selection, and duplicate-definition diagnostics.
+- `NuGetInfo.cs` and `PackageVersionSource.cs`: precedence resolution and source tracking.
+- `PackageVersionResolutionException.cs`: explicit stop condition for unresolved package versions.
+- `ProjectXmlFormat.cs`: `VersionOverride` plus attribute/element version shapes.
+- `FilterNuGetsByCondition.cs` and `ProjectsParser.cs`: pass the central map and active target framework through parsing.
+- `AppStructureInfo.cs`: final all-project/all-framework multiple-version analysis and selected props path.
+- `TestDirectoryPackagesProps.cs` and `StubWriteToConsole.cs`: edge-case tests and warning capture.
+- `CentralPackageManagement/*` and `MultiProgPackTool.sln`: versionless Group3/Project4/Project5 integration topology, an inert props template hydrated only in temporary tests, and a scoped `Directory.Build.targets` fallback that keeps ordinary solution builds valid.
+
+## Reproducing verification
+
+The test project builds as a test-library assembly. Build the solution, then run that assembly through VSTest:
+
+```console
+dotnet build MultiProgPackTool.sln --configuration Debug
+dotnet vstest Test/bin/Debug/net10.0/Test.dll
+```
+
+On .NET 10, the repository's current test-platform configuration does not support the legacy VSTest-based `dotnet test MultiProgPackTool.sln` path; running the test project is the supported equivalent.
+
+
 # Updating the MultiProjPack dotnet tool
 
 The MultiProjPack dotnet tool uses .NET target framework, which means at some time the MultiProjPack won't work when the MultiProjPack's current .NET isn't supported. This happened in 2025 because the current MultiProjPack uses .NET 6 and once .NET 10 came out you get an error and you can’t use it.

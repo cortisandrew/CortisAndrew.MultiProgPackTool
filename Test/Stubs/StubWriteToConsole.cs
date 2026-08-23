@@ -1,9 +1,10 @@
 ﻿// Copyright (c) 2021 Jon P Smith, GitHub: JonPSmith, web: http://www.thereformedprogrammer.net/
 // Licensed under MIT license. See License.txt in the project root for license information.
 
-using System;
 using Microsoft.Extensions.Logging;
 using MultiProjPackTool.HelperExtensions;
+using System;
+using System.Collections.Generic;
 using Xunit;
 
 namespace Test.Stubs
@@ -21,6 +22,9 @@ namespace Test.Stubs
         }
 
         public string LastMessage { get; private set; }
+
+        public List<string> WarningMessages { get; } = new List<string>();
+
         public LogLevel HighestLogLevel { get; private set; }
 
         public LogLevel DefaultLogLevel { get; set; }
@@ -33,8 +37,12 @@ namespace Test.Stubs
 
         public void LogMessage(string message, LogLevel level, bool warningDoesNotStop = false)
         {
-            if (level == LogLevel.Warning && !warningDoesNotStop)
-                NumWarnings++;
+            if (level == LogLevel.Warning)
+            {
+                WarningMessages.Add(message);
+                if (!warningDoesNotStop)
+                    NumWarnings++;
+            }
 
             if (level > HighestLogLevel)
                 HighestLogLevel = level;

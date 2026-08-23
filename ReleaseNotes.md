@@ -1,5 +1,18 @@
 # Release Notes
 
+## 10.0.2 Directory.Packages.props support
+
+- Added nearest-ancestor Directory.Packages.props discovery and parsing.
+- Added package version precedence: VersionOverride, applicable central PackageVersion, then project Version.
+- Added target-framework-aware central versions, simple property expansion, Include/Update support, and attribute/element version forms.
+- Added PackageVersionResolutionException when no usable version can be resolved.
+- Added final non-blocking warnings for package references/dependencies that resolve to multiple versions.
+- Added the Group3 integration graph managed by MultiFrameworks.Project4 and Project5, plus comprehensive edge-case tests.
+- Kept central package management inert during normal solution builds by checking in a props template and hydrating it only in isolated temporary integration-test workspaces.
+- Kept all fixture PackageReference items free of normal Version metadata; a CentralPackageManagement-scoped Directory.Build.targets supplies build-only fallbacks when the test props file is absent.
+- Added a detailed behavior, compatibility, topology, and verification guide to README.md.
+
+
 ## 10.0.0
 
 - Updated to .NET 10 because .NET 6 is not supported now

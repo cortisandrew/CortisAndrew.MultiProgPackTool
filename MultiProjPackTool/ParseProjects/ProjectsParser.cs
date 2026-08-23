@@ -13,6 +13,8 @@ namespace MultiProjPackTool.ParseProjects
     {
         public static AppStructureInfo ScanForProjects(this string directoryToScan, allsettings settings, IWriteToConsole consoleOut)
         {
+            var centralPackageVersions = CentralPackageVersions.FindAndParse(directoryToScan, consoleOut);
+
             var projFilePaths = Directory.GetDirectories(directoryToScan)
                     .Where(dir => Path.GetFileName(dir).StartsWith(settings.toolSettings.NamespacePrefix))
                     .SelectMany(dir =>
@@ -56,7 +58,8 @@ namespace MultiProjPackTool.ParseProjects
                 var projectToUpdate = pInfo[filename];
 
                 //This finds all the ItemGroups that contain PackageReferences
-                var filterNuGets = new FilterNuGetsByCondition(projectDecoded, filename, consoleOut);
+                var filterNuGets = new FilterNuGetsByCondition(
+                    projectDecoded, filename, consoleOut, centralPackageVersions);
 
                 //get target framework(s) and then the NuGets for each frameworks
                 //NOTE: This will have duplicates if a dependent Project has the same NuGet
@@ -77,8 +80,8 @@ namespace MultiProjPackTool.ParseProjects
                         { projectDecoded.PropertyGroup.TargetFramework };
 
                     //get the ItemGroup that contains the NuGet packages
-                    projectToUpdate.NuGetPackagesByFramework[projectDecoded.PropertyGroup.TargetFramework] = 
-                        filterNuGets.IncludeTheseNuGetsNoConditions();
+                    projectToUpdate.NuGetPackagesByFramework[projectDecoded.PropertyGroup.TargetFramework] =
+                        filterNuGets.IncludeTheseNuGetsNoConditions(projectDecoded.PropertyGroup.TargetFramework);
                 }
 
                 // Fill in references to other packages
@@ -89,7 +92,11 @@ namespace MultiProjPackTool.ParseProjects
                     .ToList() ?? new List<ProjectInfo>();
             }
 
-            return new AppStructureInfo(settings.toolSettings.NamespacePrefix, pInfo, consoleOut);
+            return new AppStructureInfo(
+                settings.toolSettings.NamespacePrefix, 
+                pInfo, 
+                consoleOut,
+                centralPackageVersions.FilePath);
         }
 
         private static T DeserializeToObject<T>(this string filepath) where T : class

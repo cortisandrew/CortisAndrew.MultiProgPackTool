@@ -1,0 +1,9 @@
+<Project>
+  <!-- Keep checked-in fixture projects buildable without putting Version metadata on
+       their PackageReference items. Hydrated tests create Directory.Packages.props,
+       which disables these normal-build-only fallbacks. -->
+  <ItemGroup Condition="!Exists('$(MSBuildThisFileDirectory)Directory.Packages.props')">
+    <PackageReference Update="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Update="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+  </ItemGroup>
+</Project>
