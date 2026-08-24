@@ -51,6 +51,15 @@ namespace MultiProjPackTool.ProcessHandler
             }
             _consoleOut.LogMessage("Finished dotnet pack...", LogLevel.Information);
             var nuGetFromPath = Path.Combine(currentDirectory, SubDirectoryWhereNuspecIsIn, _settings.FormNupkgFilename());
+            if (!File.Exists(nuGetFromPath))
+            {
+                _consoleOut.LogMessage(
+                    $"dotnet pack completed but the expected NuGet package was not found at " +
+                    $"'{nuGetFromPath}'. The filename uses NuGet's normalized form of configured version " +
+                    $"'{_settings.metadata.version}'.",
+                    LogLevel.Error);
+                return;
+            }
             if (!string.IsNullOrEmpty(_settings.toolSettings.CopyNuGetTo))
             {
                 var nuGetToPath = Path.Combine(_settings.toolSettings.CopyNuGetTo, _settings.FormNupkgFilename());
