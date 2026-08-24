@@ -14,14 +14,14 @@
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <PackageVersion>10.0.10</PackageVersion>
-    <Version>10.0.10</Version>
-    <AssemblyVersion>10.0.10</AssemblyVersion>
-    <FileVersion>10.0.10</FileVersion>
+    <PackageVersion>10.0.10-CortisAndrew1</PackageVersion>
+    <Version>10.0.10-CortisAndrew1</Version>
+    <AssemblyVersion>10.0.10.1</AssemblyVersion>
+    <FileVersion>10.0.10.1</FileVersion>
     <Company>Selective Analytics</Company>
     <Authors>Jon P Smith</Authors>
-    <PackageId>JonPSmith.MultiProjPack</PackageId>
-    <Product>JonPSmith.MultiProjPack</Product>
+    <PackageId>CortisAndrew.JonPSmith.MultiProjPack</PackageId>
+    <Product>CortisAndrew.JonPSmith.MultiProjPack</Product>
     <Description>A tool to combine mutiple projects with a similar starting name. Used with mondular monolith design</Description>
     <Copyright>Copyright (c) 2021 Jon P Smith</Copyright>
     <PackageProjectUrl>https://github.com/JonPSmith/MultiProgPackTool</PackageProjectUrl>
