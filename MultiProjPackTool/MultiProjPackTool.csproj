@@ -14,10 +14,10 @@
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <PackageVersion>10.0.10-CortisAndrew1</PackageVersion>
-    <Version>10.0.10-CortisAndrew1</Version>
-    <AssemblyVersion>10.0.10.1</AssemblyVersion>
-    <FileVersion>10.0.10.1</FileVersion>
+    <PackageVersion>10.0.10-CortisAndrew2</PackageVersion>
+    <Version>10.0.10-CortisAndrew2</Version>
+    <AssemblyVersion>10.0.10.2</AssemblyVersion>
+    <FileVersion>10.0.10.2</FileVersion>
     <Company>Selective Analytics</Company>
     <Authors>Jon P Smith</Authors>
     <PackageId>CortisAndrew.JonPSmith.MultiProjPack</PackageId>
@@ -29,6 +29,8 @@
     <RepositoryType>GuHub</RepositoryType>
     <PackageTags>NuGet Architecture</PackageTags>
     <PackageReleaseNotes>
+		- Now the MultiProjPack is able to use central package repositories (i.e. Directory.Packages.props)
+		- Normalises the package name of packages projects
 		- Updated to .NET 10
 		- Correct type of NuGet type
 		- Updated the the README with how to update the JonPSmith.MultiProjPack NuGet
