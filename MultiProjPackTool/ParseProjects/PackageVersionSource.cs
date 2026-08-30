@@ -1,4 +1,7 @@
-﻿using System;
+﻿// Copyright (c) 2026 Andrew Cortis, GitHub: CortisAndrew
+// SPDX-License-Identifier: MIT
+
+using System;
 using System.Collections.Generic;
 using System.Text;
 

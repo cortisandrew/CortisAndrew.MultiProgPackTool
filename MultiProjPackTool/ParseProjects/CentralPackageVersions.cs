@@ -1,4 +1,7 @@
-﻿using Microsoft.Extensions.Logging;
+﻿// Copyright (c) 2026 Andrew Cortis, GitHub: CortisAndrew
+// SPDX-License-Identifier: MIT
+
+using Microsoft.Extensions.Logging;
 using MultiProjPackTool.HelperExtensions;
 using System;
 using System.Collections.Generic;

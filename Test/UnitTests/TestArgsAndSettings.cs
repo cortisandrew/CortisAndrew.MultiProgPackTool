@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Andrew Cortis, GitHub: CortisAndrew
+// SPDX-License-Identifier: MIT
+
 using System;
 using System.Configuration;
 using Microsoft.Extensions.Logging;

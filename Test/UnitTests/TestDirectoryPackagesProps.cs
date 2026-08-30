@@ -1,4 +1,7 @@
-﻿using MultiProjPackTool.ParseProjects;
+﻿// Copyright (c) 2026 Andrew Cortis, GitHub: CortisAndrew
+// SPDX-License-Identifier: MIT
+
+using MultiProjPackTool.ParseProjects;
 using System;
 using System.Collections.Generic;
 using System.IO;

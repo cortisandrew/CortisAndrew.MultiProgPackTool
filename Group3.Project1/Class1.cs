@@ -1,4 +1,6 @@
-﻿namespace Group3.Project1
+﻿// Copyright (c) 2026 Andrew Cortis, GitHub: CortisAndrew
+// SPDX-License-Identifier: MIT
+namespace Group3.Project1
 {
     public class Class1
     {
